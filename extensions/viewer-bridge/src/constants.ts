@@ -1,0 +1,11 @@
+export const BridgeMessageType = {
+  VIEWER_READY: 'VIEWER_READY',
+  ACTIVATE_TOOL: 'ACTIVATE_TOOL',
+  DEACTIVATE_TOOL: 'DEACTIVATE_TOOL',
+  MEASUREMENT_ADDED: 'MEASUREMENT_ADDED',
+  MEASUREMENT_UPDATED: 'MEASUREMENT_UPDATED',
+} as const;
+
+export type MeasurementMessageType =
+  | typeof BridgeMessageType.MEASUREMENT_ADDED
+  | typeof BridgeMessageType.MEASUREMENT_UPDATED;

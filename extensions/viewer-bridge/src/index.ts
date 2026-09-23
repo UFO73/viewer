@@ -1,0 +1,31 @@
+import packageJson from '../package.json';
+import { ViewerBridge, type ViewerBridgeOptions } from './ViewerBridge';
+
+type PreRegistrationOptions = Pick<ViewerBridgeOptions, 'commandsManager' | 'servicesManager'> & {
+  configuration?: {
+    hostOrigin?: string;
+  };
+};
+
+let bridge: ViewerBridge | null = null;
+
+const viewerBridgeExtension = {
+  id: packageJson.name,
+
+  preRegistration({
+    commandsManager,
+    servicesManager,
+    configuration = {},
+  }: PreRegistrationOptions) {
+    const { hostOrigin = process.env.HOST_ORIGIN } = configuration;
+
+    if (!hostOrigin) {
+      throw new Error('[ViewerBridge] HOST_ORIGIN is required');
+    }
+
+    bridge?.destroy();
+    bridge = new ViewerBridge({ commandsManager, servicesManager, hostOrigin });
+  },
+};
+
+export default viewerBridgeExtension;
