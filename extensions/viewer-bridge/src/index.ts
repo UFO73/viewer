@@ -1,5 +1,6 @@
 import packageJson from '../package.json';
 import { ViewerBridge, type ViewerBridgeOptions } from './ViewerBridge';
+import getCustomizationModule from './getCustomizationModule';
 
 type PreRegistrationOptions = Pick<ViewerBridgeOptions, 'commandsManager' | 'servicesManager'> & {
   configuration?: {
@@ -11,6 +12,7 @@ let bridge: ViewerBridge | null = null;
 
 const viewerBridgeExtension = {
   id: packageJson.name,
+  getCustomizationModule,
 
   preRegistration({
     commandsManager,

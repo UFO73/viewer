@@ -8,7 +8,8 @@ const rowIdSchema = z.string().min(1);
 const measurementPayloadSchema = z.object({
   rowId: rowIdSchema,
   annotationId: z.string().min(1),
-  area: z.object({
+  toolName: z.enum(['EllipticalROI', 'Length']),
+  metric: z.object({
     value: z.number(),
     unit: z.string().min(1),
   }),
@@ -20,7 +21,7 @@ export const hostToViewerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal(BridgeMessageType.ACTIVATE_TOOL),
     payload: z.object({
       rowId: rowIdSchema,
-      toolName: z.literal('EllipticalROI'),
+      toolName: z.enum(['EllipticalROI', 'Length']),
     }),
   }),
   z.object({
@@ -28,6 +29,20 @@ export const hostToViewerMessageSchema = z.discriminatedUnion('type', [
     type: z.literal(BridgeMessageType.DEACTIVATE_TOOL),
     payload: z.object({
       rowId: rowIdSchema,
+    }),
+  }),
+  z.object({
+    version: z.literal(BRIDGE_PROTOCOL_VERSION),
+    type: z.literal(BridgeMessageType.FOCUS_MEASUREMENT),
+    payload: z.object({
+      annotationId: z.string().min(1),
+    }),
+  }),
+  z.object({
+    version: z.literal(BRIDGE_PROTOCOL_VERSION),
+    type: z.literal(BridgeMessageType.DELETE_MEASUREMENT),
+    payload: z.object({
+      annotationId: z.string().min(1),
     }),
   }),
 ]);

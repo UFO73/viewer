@@ -30,6 +30,7 @@ const IS_COVERAGE = process.env.COVERAGE === 'true';
 
 // read from ../version.txt
 const VERSION_NUMBER = fs.readFileSync(path.join(__dirname, '../version.txt'), 'utf8') || '';
+const OHIF_VERSION = require('../platform/app/package.json').version;
 
 const COMMIT_HASH = fs.readFileSync(path.join(__dirname, '../commit.txt'), 'utf8') || '';
 
@@ -44,6 +45,7 @@ const defineValues = {
   'process.env.PUBLIC_URL': JSON.stringify(process.env.PUBLIC_URL || '/'),
   'process.env.BUILD_NUM': JSON.stringify(BUILD_NUM),
   'process.env.VERSION_NUMBER': JSON.stringify(VERSION_NUMBER),
+  'process.env.OHIF_VERSION': JSON.stringify(OHIF_VERSION),
   'process.env.COMMIT_HASH': JSON.stringify(COMMIT_HASH),
   /* i18n */
   'process.env.USE_LOCIZE': JSON.stringify(process.env.USE_LOCIZE || ''),

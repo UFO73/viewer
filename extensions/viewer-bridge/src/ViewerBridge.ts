@@ -7,7 +7,7 @@ import { BridgeMessageType, type MeasurementMessageType } from './constants';
 
 type ActiveMeasurement = {
   rowId: string;
-  toolName: 'EllipticalROI';
+  toolName: 'EllipticalROI' | 'Length';
 };
 
 type Measurement = {
@@ -37,11 +37,16 @@ type ViewportGridService = {
     VIEWPORTS_READY: string;
   };
   subscribe: (event: string, callback: () => void) => Subscription;
+  getState: () => { viewports: Map<unknown, unknown> };
 };
 
 export type ViewerBridgeOptions = {
   commandsManager: {
-    runCommand: (commandName: string, options: { toolName: string }, context?: string) => unknown;
+    runCommand: (
+      commandName: string,
+      options: { toolName?: string; uid?: string },
+      context?: string
+    ) => unknown;
   };
   servicesManager: {
     services: {
@@ -55,7 +60,7 @@ export type ViewerBridgeOptions = {
 export class ViewerBridge {
   private readonly subscriptions: Subscription[];
   private activeMeasurement: ActiveMeasurement | null = null;
-  private readonly rowIdByAnnotationId = new Map<string, string>();
+  private readonly measurementByAnnotationId = new Map<string, ActiveMeasurement>();
   private readySent = false;
 
   constructor(private readonly options: ViewerBridgeOptions) {
@@ -79,7 +84,7 @@ export class ViewerBridge {
   destroy() {
     window.removeEventListener('message', this.handleMessage);
     this.subscriptions.forEach(subscription => subscription.unsubscribe());
-    this.rowIdByAnnotationId.clear();
+    this.measurementByAnnotationId.clear();
     this.activeMeasurement = null;
   }
 
@@ -100,6 +105,21 @@ export class ViewerBridge {
       return;
     }
 
+    if (message.data.type === BridgeMessageType.FOCUS_MEASUREMENT) {
+      this.options.commandsManager.runCommand('jumpToMeasurement', {
+        uid: message.data.payload.annotationId,
+      });
+      return;
+    }
+
+    if (message.data.type === BridgeMessageType.DELETE_MEASUREMENT) {
+      this.options.commandsManager.runCommand('removeMeasurement', {
+        uid: message.data.payload.annotationId,
+      });
+      this.measurementByAnnotationId.delete(message.data.payload.annotationId);
+      return;
+    }
+
     if (this.activeMeasurement?.rowId === message.data.payload.rowId) {
       this.deactivateTool();
     }
@@ -114,47 +134,57 @@ export class ViewerBridge {
       return;
     }
 
-    const area = this.getArea(measurement);
+    const metric = this.getMetric(measurement);
 
-    if (!area) {
+    if (!metric) {
       return;
     }
 
-    const rowId = this.activeMeasurement.rowId;
+    const activeMeasurement = this.activeMeasurement;
 
-    this.rowIdByAnnotationId.set(measurement.uid, rowId);
-    this.postMeasurement(BridgeMessageType.MEASUREMENT_ADDED, measurement.uid, rowId, area);
+    this.measurementByAnnotationId.set(measurement.uid, activeMeasurement);
+    this.postMeasurement(
+      BridgeMessageType.MEASUREMENT_ADDED,
+      measurement.uid,
+      activeMeasurement,
+      metric
+    );
     this.deactivateTool();
   };
 
   private readonly handleMeasurementUpdated = ({ measurement }: MeasurementEvent) => {
-    if (!measurement?.uid || measurement.toolName !== 'EllipticalROI') {
+    if (!measurement?.uid) {
       return;
     }
 
-    const rowId = this.rowIdByAnnotationId.get(measurement.uid);
-    const area = this.getArea(measurement);
+    const activeMeasurement = this.measurementByAnnotationId.get(measurement.uid);
+    const metric = this.getMetric(measurement);
 
-    if (!rowId || !area) {
+    if (!activeMeasurement || measurement.toolName !== activeMeasurement.toolName || !metric) {
       return;
     }
 
-    this.postMeasurement(BridgeMessageType.MEASUREMENT_UPDATED, measurement.uid, rowId, area);
+    this.postMeasurement(
+      BridgeMessageType.MEASUREMENT_UPDATED,
+      measurement.uid,
+      activeMeasurement,
+      metric
+    );
   };
 
-  private getArea(measurement: Measurement) {
+  private getMetric(measurement: Measurement) {
     const stats = Object.values(measurement.data ?? {})[0] as
-      | { area?: unknown; areaUnit?: unknown }
+      | { area?: unknown; areaUnit?: unknown; length?: unknown; unit?: unknown }
       | undefined;
 
-    if (typeof stats?.area !== 'number' || typeof stats.areaUnit !== 'string') {
+    const value = measurement.toolName === 'Length' ? stats?.length : stats?.area;
+    const unit = measurement.toolName === 'Length' ? stats?.unit : stats?.areaUnit;
+
+    if (typeof value !== 'number' || typeof unit !== 'string') {
       return null;
     }
 
-    return {
-      value: stats.area,
-      unit: stats.areaUnit,
-    };
+    return { value, unit };
   }
 
   private deactivateTool() {
@@ -162,20 +192,20 @@ export class ViewerBridge {
     this.setActiveTool('Pan');
   }
 
-  private setActiveTool(toolName: 'EllipticalROI' | 'Pan') {
+  private setActiveTool(toolName: 'EllipticalROI' | 'Length' | 'Pan') {
     this.options.commandsManager.runCommand('setToolActive', { toolName }, 'CORNERSTONE');
   }
 
   private postMeasurement(
     type: MeasurementMessageType,
     annotationId: string,
-    rowId: string,
-    area: { value: number; unit: string }
+    activeMeasurement: ActiveMeasurement,
+    metric: { value: number; unit: string }
   ) {
     this.postToHost({
       version: BRIDGE_PROTOCOL_VERSION,
       type,
-      payload: { rowId, annotationId, area },
+      payload: { ...activeMeasurement, annotationId, metric },
     });
   }
 
