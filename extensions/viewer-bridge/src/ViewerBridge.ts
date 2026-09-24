@@ -17,7 +17,7 @@ type Measurement = {
 };
 
 type MeasurementEvent = {
-  measurement?: Measurement;
+  measurement?: Measurement | string;
 };
 
 type Subscription = {
@@ -28,6 +28,7 @@ type MeasurementService = {
   EVENTS: {
     MEASUREMENT_ADDED: string;
     MEASUREMENT_UPDATED: string;
+    MEASUREMENT_REMOVED: string;
   };
   subscribe: (event: string, callback: (event: MeasurementEvent) => void) => Subscription;
 };
@@ -77,11 +78,18 @@ export class ViewerBridge {
         measurementService.EVENTS.MEASUREMENT_UPDATED,
         this.handleMeasurementUpdated
       ),
+      measurementService.subscribe(
+        measurementService.EVENTS.MEASUREMENT_REMOVED,
+        this.handleMeasurementRemoved
+      ),
       viewportGridService.subscribe(viewportGridService.EVENTS.VIEWPORTS_READY, this.sendReady),
     ];
   }
 
   destroy() {
+    if (this.activeMeasurement) {
+      this.deactivateTool();
+    }
     window.removeEventListener('message', this.handleMessage);
     this.subscriptions.forEach(subscription => subscription.unsubscribe());
     this.measurementByAnnotationId.clear();
@@ -116,7 +124,6 @@ export class ViewerBridge {
       this.options.commandsManager.runCommand('removeMeasurement', {
         uid: message.data.payload.annotationId,
       });
-      this.measurementByAnnotationId.delete(message.data.payload.annotationId);
       return;
     }
 
@@ -127,6 +134,7 @@ export class ViewerBridge {
 
   private readonly handleMeasurementAdded = ({ measurement }: MeasurementEvent) => {
     if (
+      typeof measurement === 'string' ||
       !measurement?.uid ||
       !this.activeMeasurement ||
       measurement.toolName !== this.activeMeasurement.toolName
@@ -153,7 +161,7 @@ export class ViewerBridge {
   };
 
   private readonly handleMeasurementUpdated = ({ measurement }: MeasurementEvent) => {
-    if (!measurement?.uid) {
+    if (!measurement || typeof measurement === 'string' || !measurement.uid) {
       return;
     }
 
@@ -170,6 +178,25 @@ export class ViewerBridge {
       activeMeasurement,
       metric
     );
+  };
+
+  private readonly handleMeasurementRemoved = ({ measurement }: MeasurementEvent) => {
+    if (typeof measurement !== 'string') {
+      return;
+    }
+
+    const activeMeasurement = this.measurementByAnnotationId.get(measurement);
+
+    if (!activeMeasurement) {
+      return;
+    }
+
+    this.measurementByAnnotationId.delete(measurement);
+    this.postToHost({
+      version: BRIDGE_PROTOCOL_VERSION,
+      type: BridgeMessageType.MEASUREMENT_REMOVED,
+      payload: { rowId: activeMeasurement.rowId, annotationId: measurement },
+    });
   };
 
   private getMetric(measurement: Measurement) {

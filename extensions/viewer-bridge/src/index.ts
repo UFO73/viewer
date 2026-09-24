@@ -9,6 +9,13 @@ type PreRegistrationOptions = Pick<ViewerBridgeOptions, 'commandsManager' | 'ser
 };
 
 let bridge: ViewerBridge | null = null;
+let bridgeOptions: ViewerBridgeOptions | null = null;
+
+function createBridge() {
+  if (!bridge && bridgeOptions) {
+    bridge = new ViewerBridge(bridgeOptions);
+  }
+}
 
 const viewerBridgeExtension = {
   id: packageJson.name,
@@ -26,7 +33,13 @@ const viewerBridgeExtension = {
     }
 
     bridge?.destroy();
-    bridge = new ViewerBridge({ commandsManager, servicesManager, hostOrigin });
+    bridgeOptions = { commandsManager, servicesManager, hostOrigin };
+    bridge = new ViewerBridge(bridgeOptions);
+  },
+  onModeEnter: createBridge,
+  onModeExit() {
+    bridge?.destroy();
+    bridge = null;
   },
 };
 

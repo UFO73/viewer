@@ -63,6 +63,14 @@ export const viewerToHostMessageSchema = z.discriminatedUnion('type', [
     type: z.literal(BridgeMessageType.MEASUREMENT_UPDATED),
     payload: measurementPayloadSchema,
   }),
+  z.object({
+    version: z.literal(BRIDGE_PROTOCOL_VERSION),
+    type: z.literal(BridgeMessageType.MEASUREMENT_REMOVED),
+    payload: z.object({
+      rowId: rowIdSchema,
+      annotationId: z.string().min(1),
+    }),
+  }),
 ]);
 
 export type HostToViewerMessage = z.infer<typeof hostToViewerMessageSchema>;
