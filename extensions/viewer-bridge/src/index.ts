@@ -11,14 +11,9 @@ type PreRegistrationOptions = Pick<ViewerBridgeOptions, 'commandsManager' | 'ser
 let bridge: ViewerBridge | null = null;
 let bridgeOptions: ViewerBridgeOptions | null = null;
 
-function createBridge() {
-  if (!bridge && bridgeOptions) {
-    bridge = new ViewerBridge(bridgeOptions);
-  }
-}
-
 const viewerBridgeExtension = {
   id: packageJson.name,
+
   getCustomizationModule,
 
   preRegistration({
@@ -26,17 +21,25 @@ const viewerBridgeExtension = {
     servicesManager,
     configuration = {},
   }: PreRegistrationOptions) {
-    const { hostOrigin = process.env.HOST_ORIGIN } = configuration;
+    const hostOrigin = configuration.hostOrigin ?? process.env.HOST_ORIGIN;
 
     if (!hostOrigin) {
       throw new Error('[ViewerBridge] HOST_ORIGIN is required');
     }
 
-    bridge?.destroy();
-    bridgeOptions = { commandsManager, servicesManager, hostOrigin };
-    bridge = new ViewerBridge(bridgeOptions);
+    bridgeOptions = {
+      commandsManager,
+      servicesManager,
+      hostOrigin,
+    };
   },
-  onModeEnter: createBridge,
+
+  onModeEnter() {
+    if (!bridge && bridgeOptions) {
+      bridge = new ViewerBridge(bridgeOptions);
+    }
+  },
+
   onModeExit() {
     bridge?.destroy();
     bridge = null;

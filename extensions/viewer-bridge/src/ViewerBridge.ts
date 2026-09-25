@@ -3,11 +3,17 @@ import {
   hostToViewerMessageSchema,
   type ViewerToHostMessage,
 } from './contract';
-import { BridgeMessageType, type MeasurementMessageType } from './constants';
+import {
+  BridgeMessageType,
+  DEFAULT_VIEWER_TOOL,
+  type MeasurementMessageType,
+  ViewerTool,
+  type ViewerToolName,
+} from './constants';
 
 type ActiveMeasurement = {
   rowId: string;
-  toolName: 'EllipticalROI' | 'Length';
+  toolName: ViewerToolName;
 };
 
 type Measurement = {
@@ -107,30 +113,40 @@ export class ViewerBridge {
       return;
     }
 
-    if (message.data.type === BridgeMessageType.ACTIVATE_TOOL) {
-      this.activeMeasurement = message.data.payload;
-      this.setActiveTool(message.data.payload.toolName);
-      return;
-    }
-
-    if (message.data.type === BridgeMessageType.FOCUS_MEASUREMENT) {
-      this.options.commandsManager.runCommand('jumpToMeasurement', {
-        uid: message.data.payload.annotationId,
-      });
-      return;
-    }
-
-    if (message.data.type === BridgeMessageType.DELETE_MEASUREMENT) {
-      this.options.commandsManager.runCommand('removeMeasurement', {
-        uid: message.data.payload.annotationId,
-      });
-      return;
-    }
-
-    if (this.activeMeasurement?.rowId === message.data.payload.rowId) {
-      this.deactivateTool();
+    switch (message.data.type) {
+      case BridgeMessageType.ACTIVATE_TOOL:
+        this.activateTool(message.data.payload);
+        break;
+      case BridgeMessageType.DEACTIVATE_TOOL:
+        this.cancelDrawing(message.data.payload.rowId);
+        break;
+      case BridgeMessageType.FOCUS_MEASUREMENT:
+        this.focusMeasurement(message.data.payload.annotationId);
+        break;
+      case BridgeMessageType.DELETE_MEASUREMENT:
+        this.deleteMeasurement(message.data.payload.annotationId);
+        break;
     }
   };
+
+  private activateTool(measurement: ActiveMeasurement) {
+    this.activeMeasurement = measurement;
+    this.setActiveTool(measurement.toolName);
+  }
+
+  private cancelDrawing(rowId: string) {
+    if (this.activeMeasurement?.rowId === rowId) {
+      this.deactivateTool();
+    }
+  }
+
+  private focusMeasurement(annotationId: string) {
+    this.options.commandsManager.runCommand('jumpToMeasurement', { uid: annotationId });
+  }
+
+  private deleteMeasurement(annotationId: string) {
+    this.options.commandsManager.runCommand('removeMeasurement', { uid: annotationId });
+  }
 
   private readonly handleMeasurementAdded = ({ measurement }: MeasurementEvent) => {
     if (
@@ -204,8 +220,8 @@ export class ViewerBridge {
       | { area?: unknown; areaUnit?: unknown; length?: unknown; unit?: unknown }
       | undefined;
 
-    const value = measurement.toolName === 'Length' ? stats?.length : stats?.area;
-    const unit = measurement.toolName === 'Length' ? stats?.unit : stats?.areaUnit;
+    const value = measurement.toolName === ViewerTool.LENGTH ? stats?.length : stats?.area;
+    const unit = measurement.toolName === ViewerTool.LENGTH ? stats?.unit : stats?.areaUnit;
 
     if (typeof value !== 'number' || typeof unit !== 'string') {
       return null;
@@ -216,10 +232,10 @@ export class ViewerBridge {
 
   private deactivateTool() {
     this.activeMeasurement = null;
-    this.setActiveTool('Pan');
+    this.setActiveTool(DEFAULT_VIEWER_TOOL);
   }
 
-  private setActiveTool(toolName: 'EllipticalROI' | 'Length' | 'Pan') {
+  private setActiveTool(toolName: ViewerToolName | typeof DEFAULT_VIEWER_TOOL) {
     this.options.commandsManager.runCommand('setToolActive', { toolName }, 'CORNERSTONE');
   }
 

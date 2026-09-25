@@ -9,6 +9,14 @@ export const BridgeMessageType = {
   MEASUREMENT_REMOVED: 'MEASUREMENT_REMOVED',
 } as const;
 
+export const ViewerTool = {
+  ELLIPTICAL_ROI: 'EllipticalROI',
+  LENGTH: 'Length',
+} as const;
+
+export type ViewerToolName = (typeof ViewerTool)[keyof typeof ViewerTool];
+export const DEFAULT_VIEWER_TOOL = 'Pan' as const;
+
 export type MeasurementMessageType =
   | typeof BridgeMessageType.MEASUREMENT_ADDED
   | typeof BridgeMessageType.MEASUREMENT_UPDATED;
