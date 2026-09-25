@@ -1,3 +1,5 @@
+import { annotation } from '@cornerstonejs/tools';
+
 import {
   BRIDGE_PROTOCOL_VERSION,
   hostToViewerMessageSchema,
@@ -10,6 +12,12 @@ import {
   ViewerTool,
   type ViewerToolName,
 } from './constants';
+import {
+  loadAnnotations,
+  removeAnnotation,
+  saveAnnotation,
+  type StoredAnnotation,
+} from './annotationStorage';
 
 type ActiveMeasurement = {
   rowId: string;
@@ -37,6 +45,16 @@ type MeasurementService = {
     MEASUREMENT_REMOVED: string;
   };
   subscribe: (event: string, callback: (event: MeasurementEvent) => void) => Subscription;
+  getSource: (
+    name: string,
+    version: string
+  ) => {
+    annotationToMeasurement: (toolName: ViewerToolName, detail: unknown) => unknown;
+  };
+};
+
+type CornerstoneViewportService = {
+  getRenderingEngine: () => { render: () => void } | undefined;
 };
 
 type ViewportGridService = {
@@ -57,6 +75,7 @@ export type ViewerBridgeOptions = {
   };
   servicesManager: {
     services: {
+      cornerstoneViewportService: CornerstoneViewportService;
       measurementService: MeasurementService;
       viewportGridService: ViewportGridService;
     };
@@ -167,6 +186,7 @@ export class ViewerBridge {
     const activeMeasurement = this.activeMeasurement;
 
     this.measurementByAnnotationId.set(measurement.uid, activeMeasurement);
+    this.storeAnnotation(measurement.uid, activeMeasurement);
     this.postMeasurement(
       BridgeMessageType.MEASUREMENT_ADDED,
       measurement.uid,
@@ -188,6 +208,7 @@ export class ViewerBridge {
       return;
     }
 
+    this.storeAnnotation(measurement.uid, activeMeasurement);
     this.postMeasurement(
       BridgeMessageType.MEASUREMENT_UPDATED,
       measurement.uid,
@@ -208,6 +229,7 @@ export class ViewerBridge {
     }
 
     this.measurementByAnnotationId.delete(measurement);
+    removeAnnotation(measurement);
     this.postToHost({
       version: BRIDGE_PROTOCOL_VERSION,
       type: BridgeMessageType.MEASUREMENT_REMOVED,
@@ -228,6 +250,59 @@ export class ViewerBridge {
     }
 
     return { value, unit };
+  }
+
+  private storeAnnotation(annotationId: string, activeMeasurement: ActiveMeasurement) {
+    const sourceAnnotation = annotation.state.getAnnotation(annotationId);
+
+    if (!sourceAnnotation) {
+      return;
+    }
+
+    saveAnnotation({
+      ...activeMeasurement,
+      annotationId,
+      metadata: sourceAnnotation.metadata,
+      data: sourceAnnotation.data,
+    });
+  }
+
+  private restoreAnnotations() {
+    const { cornerstoneViewportService, measurementService } =
+      this.options.servicesManager.services;
+    const annotationManager = annotation.state.getAnnotationManager();
+    const measurementSource = measurementService.getSource('Cornerstone3DTools', '0.1');
+
+    loadAnnotations().forEach(storedAnnotation => {
+      this.measurementByAnnotationId.set(storedAnnotation.annotationId, {
+        rowId: storedAnnotation.rowId,
+        toolName: storedAnnotation.toolName,
+      });
+
+      if (annotation.state.getAnnotation(storedAnnotation.annotationId)) {
+        return;
+      }
+
+      const restoredAnnotation = this.createAnnotation(storedAnnotation);
+
+      annotationManager.addAnnotation(restoredAnnotation);
+      measurementSource.annotationToMeasurement(storedAnnotation.toolName, {
+        uid: storedAnnotation.annotationId,
+        annotation: restoredAnnotation,
+      });
+    });
+
+    cornerstoneViewportService.getRenderingEngine()?.render();
+  }
+
+  private createAnnotation(storedAnnotation: StoredAnnotation) {
+    return {
+      annotationUID: storedAnnotation.annotationId,
+      highlighted: false,
+      invalidated: true,
+      metadata: storedAnnotation.metadata,
+      data: storedAnnotation.data,
+    };
   }
 
   private deactivateTool() {
@@ -257,6 +332,7 @@ export class ViewerBridge {
       return;
     }
 
+    this.restoreAnnotations();
     this.readySent = true;
     this.postToHost({
       version: BRIDGE_PROTOCOL_VERSION,

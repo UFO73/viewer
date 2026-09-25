@@ -5,6 +5,7 @@
   "main": "src/index.ts",
   "module": "src/index.ts",
   "dependencies": {
+    "@cornerstonejs/tools": "4.15.29",
     "zod": "^3.25.0 || ^4.0.0"
   },
   "peerDependencies": {
