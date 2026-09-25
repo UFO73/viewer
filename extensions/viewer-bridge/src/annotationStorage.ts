@@ -10,7 +10,9 @@ export type StoredAnnotation = {
   data: Types.AnnotationData;
 };
 
-const STORAGE_KEY = 'viewer-bridge-annotations';
+const STUDY_INSTANCE_UID_PARAM = 'StudyInstanceUIDs';
+const studyInstanceUID = new URLSearchParams(window.location.search).get(STUDY_INSTANCE_UID_PARAM);
+const STORAGE_KEY = `viewer-bridge-annotations:${studyInstanceUID}`;
 
 export function loadAnnotations(): StoredAnnotation[] {
   try {

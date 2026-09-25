@@ -23,6 +23,11 @@ const measurementPayloadSchema = z.object({
 export const hostToViewerMessageSchema = z.discriminatedUnion('type', [
   z.object({
     version: z.literal(BRIDGE_PROTOCOL_VERSION),
+    type: z.literal(BridgeMessageType.REQUEST_VIEWER_READY),
+    payload: z.object({}),
+  }),
+  z.object({
+    version: z.literal(BRIDGE_PROTOCOL_VERSION),
     type: z.literal(BridgeMessageType.ACTIVATE_TOOL),
     payload: z.object({
       rowId: rowIdSchema,

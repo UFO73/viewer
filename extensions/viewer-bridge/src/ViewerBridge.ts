@@ -57,12 +57,18 @@ type CornerstoneViewportService = {
   getRenderingEngine: () => { render: () => void } | undefined;
 };
 
+type DisplaySetService = {
+  getDisplaySetByUID: (displaySetInstanceUID: string) => { imageIds?: string[] } | undefined;
+};
+
 type ViewportGridService = {
   EVENTS: {
     VIEWPORTS_READY: string;
   };
   subscribe: (event: string, callback: () => void) => Subscription;
-  getState: () => { viewports: Map<unknown, unknown> };
+  getState: () => {
+    viewports: Map<unknown, { displaySetInstanceUIDs?: string[]; isReady: boolean }>;
+  };
 };
 
 export type ViewerBridgeOptions = {
@@ -76,6 +82,7 @@ export type ViewerBridgeOptions = {
   servicesManager: {
     services: {
       cornerstoneViewportService: CornerstoneViewportService;
+      displaySetService: DisplaySetService;
       measurementService: MeasurementService;
       viewportGridService: ViewportGridService;
     };
@@ -87,7 +94,7 @@ export class ViewerBridge {
   private readonly subscriptions: Subscription[];
   private activeMeasurement: ActiveMeasurement | null = null;
   private readonly measurementByAnnotationId = new Map<string, ActiveMeasurement>();
-  private readySent = false;
+  private ready = false;
 
   constructor(private readonly options: ViewerBridgeOptions) {
     const { measurementService, viewportGridService } = options.servicesManager.services;
@@ -109,6 +116,8 @@ export class ViewerBridge {
       ),
       viewportGridService.subscribe(viewportGridService.EVENTS.VIEWPORTS_READY, this.sendReady),
     ];
+
+    this.respondReady();
   }
 
   destroy() {
@@ -133,6 +142,9 @@ export class ViewerBridge {
     }
 
     switch (message.data.type) {
+      case BridgeMessageType.REQUEST_VIEWER_READY:
+        this.respondReady();
+        break;
       case BridgeMessageType.ACTIVATE_TOOL:
         this.activateTool(message.data.payload);
         break;
@@ -273,27 +285,48 @@ export class ViewerBridge {
     const annotationManager = annotation.state.getAnnotationManager();
     const measurementSource = measurementService.getSource('Cornerstone3DTools', '0.1');
 
-    loadAnnotations().forEach(storedAnnotation => {
-      this.measurementByAnnotationId.set(storedAnnotation.annotationId, {
-        rowId: storedAnnotation.rowId,
-        toolName: storedAnnotation.toolName,
+    loadAnnotations()
+      .filter(this.isAnnotationVisible)
+      .forEach(storedAnnotation => {
+        this.measurementByAnnotationId.set(storedAnnotation.annotationId, {
+          rowId: storedAnnotation.rowId,
+          toolName: storedAnnotation.toolName,
+        });
+
+        if (annotation.state.getAnnotation(storedAnnotation.annotationId)) {
+          return;
+        }
+
+        const restoredAnnotation = this.createAnnotation(storedAnnotation);
+
+        annotationManager.addAnnotation(restoredAnnotation);
+        measurementSource.annotationToMeasurement(storedAnnotation.toolName, {
+          uid: storedAnnotation.annotationId,
+          annotation: restoredAnnotation,
+        });
       });
-
-      if (annotation.state.getAnnotation(storedAnnotation.annotationId)) {
-        return;
-      }
-
-      const restoredAnnotation = this.createAnnotation(storedAnnotation);
-
-      annotationManager.addAnnotation(restoredAnnotation);
-      measurementSource.annotationToMeasurement(storedAnnotation.toolName, {
-        uid: storedAnnotation.annotationId,
-        annotation: restoredAnnotation,
-      });
-    });
 
     cornerstoneViewportService.getRenderingEngine()?.render();
   }
+
+  private readonly isAnnotationVisible = (storedAnnotation: StoredAnnotation) => {
+    const referencedImageId = storedAnnotation.metadata?.referencedImageId;
+
+    if (!referencedImageId) {
+      return false;
+    }
+
+    const { displaySetService, viewportGridService } = this.options.servicesManager.services;
+    const displaySetInstanceUIDs = [...viewportGridService.getState().viewports.values()].flatMap(
+      viewport => viewport.displaySetInstanceUIDs ?? []
+    );
+
+    return displaySetInstanceUIDs.some(displaySetInstanceUID =>
+      displaySetService
+        .getDisplaySetByUID(displaySetInstanceUID)
+        ?.imageIds?.includes(referencedImageId)
+    );
+  };
 
   private createAnnotation(storedAnnotation: StoredAnnotation) {
     return {
@@ -328,18 +361,41 @@ export class ViewerBridge {
   }
 
   private readonly sendReady = () => {
-    if (this.readySent) {
+    if (this.ready) {
       return;
     }
 
     this.restoreAnnotations();
-    this.readySent = true;
+    this.ready = true;
+    this.postReady();
+  };
+
+  private respondReady() {
+    if (!this.ready && this.hasReadyViewports()) {
+      this.sendReady();
+      return;
+    }
+
+    if (this.ready) {
+      this.postReady();
+    }
+  }
+
+  private hasReadyViewports() {
+    const viewports = [
+      ...this.options.servicesManager.services.viewportGridService.getState().viewports.values(),
+    ].filter(viewport => viewport.displaySetInstanceUIDs?.length);
+
+    return viewports.length > 0 && viewports.every(viewport => viewport.isReady);
+  }
+
+  private postReady() {
     this.postToHost({
       version: BRIDGE_PROTOCOL_VERSION,
       type: BridgeMessageType.VIEWER_READY,
       payload: {},
     });
-  };
+  }
 
   private postToHost(message: ViewerToHostMessage) {
     window.parent.postMessage(message, this.options.hostOrigin);
