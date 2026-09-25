@@ -1,10 +1,22 @@
 export const BridgeMessageType = {
+  REQUEST_VIEWER_READY: 'REQUEST_VIEWER_READY',
   VIEWER_READY: 'VIEWER_READY',
   ACTIVATE_TOOL: 'ACTIVATE_TOOL',
   DEACTIVATE_TOOL: 'DEACTIVATE_TOOL',
+  FOCUS_MEASUREMENT: 'FOCUS_MEASUREMENT',
+  DELETE_MEASUREMENT: 'DELETE_MEASUREMENT',
   MEASUREMENT_ADDED: 'MEASUREMENT_ADDED',
   MEASUREMENT_UPDATED: 'MEASUREMENT_UPDATED',
+  MEASUREMENT_REMOVED: 'MEASUREMENT_REMOVED',
 } as const;
+
+export const ViewerTool = {
+  ELLIPTICAL_ROI: 'EllipticalROI',
+  LENGTH: 'Length',
+} as const;
+
+export type ViewerToolName = (typeof ViewerTool)[keyof typeof ViewerTool];
+export const DEFAULT_VIEWER_TOOL = 'Pan' as const;
 
 export type MeasurementMessageType =
   | typeof BridgeMessageType.MEASUREMENT_ADDED
